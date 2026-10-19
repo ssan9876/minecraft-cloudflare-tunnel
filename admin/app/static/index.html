@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server admin</title>
+  <link rel="icon" href="/grass.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Tiny5&display=swap">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="login" id="login" hidden>
+    <form class="panel login-panel" id="login-form">
+      <img class="login-icon" src="/grass.svg" alt="" width="48" height="48">
+      <h1 class="panel-title">Server admin</h1>
+      <label class="field-label" for="password">Admin password</label>
+      <input class="field" id="password" type="password" autocomplete="current-password" required>
+      <p class="form-error" id="login-error" role="alert"></p>
+      <button class="mc-button" type="submit">Sign in</button>
+    </form>
+  </main>
+
+  <div class="shell" id="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <img src="/grass.svg" alt="" width="40" height="40">
+        <div>
+          <h1 id="motd">Minecraft server</h1>
+          <p class="address" id="address"></p>
+        </div>
+      </div>
+      <p class="status" id="status" data-state="checking">Checking</p>
+      <div class="topbar-actions">
+        <button class="mc-button" type="button" id="broadcast-open">Broadcast</button>
+        <button class="mc-button danger" type="button" id="restart">Restart server</button>
+        <button class="text-button" type="button" id="logout">Sign out</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <section class="panel overview" aria-labelledby="overview-title">
+        <h2 class="panel-title" id="overview-title">Online now</h2>
+        <dl class="stats">
+          <div><dt>Players</dt><dd id="stat-players">–</dd></div>
+          <div><dt>Tick rate</dt><dd id="stat-tps">–</dd></div>
+          <div><dt>Version</dt><dd id="stat-version">–</dd></div>
+        </dl>
+        <div class="hotbar" id="hotbar" role="group" aria-label="Players online"></div>
+        <p class="hint" id="hotbar-hint">Nobody's online. Players show up here when they join.</p>
+      </section>
+
+      <section class="panel console-panel" aria-labelledby="console-title">
+        <div class="panel-head">
+          <h2 class="panel-title" id="console-title">Console</h2>
+          <label class="check"><input type="checkbox" id="follow" checked> Follow new lines</label>
+        </div>
+        <div class="console" id="console" role="log" tabindex="0" aria-label="Server log"></div>
+        <form class="command" id="command-form">
+          <span class="slash" aria-hidden="true">/</span>
+          <input class="field" id="command" autocomplete="off" spellcheck="false" aria-label="Server command" placeholder="time set day">
+          <button class="mc-button" type="submit">Run</button>
+        </form>
+      </section>
+
+      <aside class="side">
+        <section class="panel players-panel" aria-labelledby="players-title">
+          <h2 class="panel-title" id="players-title">Players</h2>
+          <div class="tabs" role="tablist" aria-label="Player lists">
+            <button type="button" role="tab" id="tab-whitelist" aria-controls="roster" aria-selected="true" data-tab="whitelist">Whitelist <span id="count-whitelist"></span></button>
+            <button type="button" role="tab" id="tab-ops" aria-controls="roster" aria-selected="false" data-tab="ops">Operators <span id="count-ops"></span></button>
+            <button type="button" role="tab" id="tab-bans" aria-controls="roster" aria-selected="false" data-tab="bans">Banned <span id="count-bans"></span></button>
+          </div>
+          <form class="add-form" id="add-form">
+            <input class="field" id="add-name" autocomplete="off" spellcheck="false" placeholder="Minecraft username" aria-label="Minecraft username" maxlength="16" required>
+            <input class="field" id="add-reason" autocomplete="off" placeholder="Reason (optional)" aria-label="Ban reason" maxlength="200" hidden>
+            <button class="mc-button" type="submit" id="add-button">Add to whitelist</button>
+          </form>
+          <ul class="roster" id="roster" role="tabpanel" aria-labelledby="tab-whitelist"></ul>
+        </section>
+
+        <section class="panel backups-panel" aria-labelledby="backups-title">
+          <div class="panel-head">
+            <h2 class="panel-title" id="backups-title">Backups</h2>
+            <button class="mc-button" type="button" id="backup-now">Back up now</button>
+          </div>
+          <p class="hint" id="backup-hint"></p>
+          <ul class="backup-list" id="backup-list"></ul>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <div class="tooltip player-menu" id="player-menu" role="menu" hidden></div>
+
+  <dialog class="panel dialog" id="broadcast-dialog" aria-labelledby="broadcast-title">
+    <form id="broadcast-form" method="dialog">
+      <h2 class="panel-title" id="broadcast-title">Broadcast a message</h2>
+      <label class="field-label" for="broadcast-message">Everyone online sees this in chat.</label>
+      <input class="field" id="broadcast-message" maxlength="256" autocomplete="off" required>
+      <div class="dialog-actions">
+        <button class="mc-button" type="button" id="broadcast-cancel">Cancel</button>
+        <button class="mc-button" type="submit">Send</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

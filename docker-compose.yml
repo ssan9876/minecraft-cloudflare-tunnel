@@ -1,0 +1,75 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    container_name: minecraft
+    restart: unless-stopped
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: ${MC_VERSION:-LATEST}
+      MEMORY: ${MC_MEMORY:-4G}
+      TZ: ${TZ:-UTC}
+      MOTD: ${MC_MOTD:-Minecraft via Cloudflare Tunnel}
+      MAX_PLAYERS: 20
+      VIEW_DISTANCE: 10
+      # Keep Mojang auth on. Every player shows up with the cloudflared container's IP,
+      # so authentication and the whitelist (not IP bans) are what keep strangers out.
+      ONLINE_MODE: "TRUE"
+      ENABLE_WHITELIST: "TRUE"
+      ENFORCE_WHITELIST: "TRUE"
+      WHITELIST: ${MC_WHITELIST:-}
+      OPS: ${MC_OPS:-}
+      # Overlay ./config onto the server root on every start (the image defaults to /data/config)
+      COPY_CONFIG_DEST: /data
+      SYNC_SKIP_NEWER_IN_DESTINATION: "false"
+    volumes:
+      - ./data:/data
+      # Files here are copied into /data on startup (see config/bukkit.yml)
+      - ./config:/config:ro
+    ports:
+      # 127.0.0.1 = this machine only. Set MC_BIND=0.0.0.0 when a tunnel connector on another
+      # machine (e.g. a separate cloudflared LXC) needs to reach the server over the LAN.
+      - "${MC_BIND:-127.0.0.1}:25565:25565"
+
+  # Web admin panel. Reaches the server over RCON on the internal compose network and reads
+  # the world read-only; it has no Docker access. Keep it off the tunnel (LAN/VPN only).
+  admin:
+    build: ./admin
+    container_name: mc-admin
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      RCON_HOST: minecraft
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./data:/data:ro
+      - ./backups:/backups
+    ports:
+      - "${ADMIN_BIND:-127.0.0.1}:8080:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      - minecraft
+
+  # Bundled tunnel connector. Enable with COMPOSE_PROFILES=tunnel in .env;
+  # leave it off if an existing cloudflared elsewhere routes to this server.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    # cloudflared only needs to dial out to Cloudflare and to minecraft:25565
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      minecraft:
+        condition: service_healthy

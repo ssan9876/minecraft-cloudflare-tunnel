@@ -1,0 +1,6 @@
+# Partial bukkit.yml. Missing keys are filled in with defaults by the server.
+settings:
+  # Bukkit throttles repeat connections per IP (default 4000 ms). Through the tunnel every
+  # player has the same IP (cloudflared), so leaving it on would reject players who join
+  # within a few seconds of each other.
+  connection-throttle: -1

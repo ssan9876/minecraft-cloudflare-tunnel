@@ -1,0 +1,8 @@
+.env
+data/
+backups/
+__pycache__/
+
+# Deployment-specific files
+player/server.conf
+*.local.md

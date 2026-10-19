@@ -1,0 +1,8 @@
+# Copy to server.conf, fill in, then send the whole player folder to your players.
+
+# Public hostname of the TCP route on your Cloudflare tunnel
+HOSTNAME=mc.example.com
+# Name shown in the players' Multiplayer list
+SERVER_NAME=Minecraft Server
+# Local port the join script listens on (change if 25565 is taken on the player's PC)
+LOCAL_PORT=25565
