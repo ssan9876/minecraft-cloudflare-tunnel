@@ -1,6 +1,7 @@
 .env
 data/
 backups/
+mods/
 __pycache__/
 
 # Deployment-specific files

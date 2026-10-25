@@ -1,13 +1,14 @@
 # Minecraft over Cloudflare Tunnel
 
-A Paper (Java Edition) server that players reach through a Cloudflare Tunnel, so your router needs no open
+A Minecraft Java Edition server (Paper, or Fabric for mods) that players reach through a Cloudflare Tunnel, so your router needs no open
 ports and your home IP stays private. It comes with one-click join scripts for players and a web admin panel.
 
-- `docker-compose.yml`: the Paper server ([itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)),
+- `docker-compose.yml`: the Minecraft server ([itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)),
   the admin panel, and an optional bundled `cloudflared` connector
 - `player/`: join scripts to hand to players (Windows, macOS, Linux)
 - `admin/`: the admin panel (live console, players, whitelist/ops/bans, backups, restart)
 - `scripts/proxmox-create-lxc.sh`: optional script that sets this up in a Proxmox LXC
+- `scripts/paper-to-fabric.sh`: switches an existing Paper server to Fabric, keeping the world
 
 ## How it works
 
@@ -44,6 +45,7 @@ cp .env.example .env
 | `MC_BIND` | `0.0.0.0` if a `cloudflared` on *another* machine forwards to this server. |
 | `COMPOSE_PROFILES`, `TUNNEL_TOKEN` | Only for the bundled connector (step 2, option A). |
 | `MC_MOTD`, `MC_MEMORY`, `MC_VERSION`, `TZ` | Server name, memory, version, timezone. |
+| `MC_TYPE`, `MC_MODRINTH_PROJECTS`, `MC_REMOVE_OLD_MODS` | `PAPER` (default) or `FABRIC`, and the mods to install. See [Mods (Fabric)](#mods-fabric). |
 
 ### 2. Create the tunnel route
 
@@ -105,7 +107,7 @@ Open `http://<server>:8080` and sign in with `ADMIN_PASSWORD`.
 - **Console:** the live server log. Run any command from the box under it; ↑/↓ steps through your history.
 - **Players:** the whitelist, operators and bans, with add and remove.
 - **Backups:** a backup runs automatically every `BACKUP_INTERVAL_HOURS`, and the newest `BACKUP_KEEP` are kept in `./backups`.
-  You can also back up now, download or delete. Each archive holds the world, configs and plugins.
+  You can also back up now, download or delete. Each archive holds the world, configs, and plugins or mods.
   Saving is paused while it's written, so the world stays consistent.
 - **Restart server:** sends `stop`, and Docker starts the server again (about 30 s).
 - **Broadcast:** sends a chat message to everyone online.
@@ -122,6 +124,40 @@ docker compose start minecraft
 ```
 
 Command-line console: `docker exec -it minecraft rcon-cli`.
+
+## Mods (Fabric)
+
+Paper runs plugins, which live only on the server, so players need nothing extra. To run mods that add
+new blocks, items or creatures, switch the server to [Fabric](https://fabricmc.net):
+
+```bash
+# .env
+MC_TYPE=FABRIC
+MC_VERSION=26.3                     # pin it: mods are built for one Minecraft version
+MC_MODRINTH_PROJECTS=fabric-api     # comma-separated Modrinth slugs, downloaded on start
+MC_REMOVE_OLD_MODS=TRUE             # clear old jars each start so replaced versions don't pile up
+```
+
+Put your own mod jars in `./mods`. They're copied into the server on every start, so after replacing a jar,
+restart the server (from the admin panel, or `docker compose restart minecraft`).
+
+**Switching an existing Paper world:** Paper stores the world's seed, game rules, weather and day clock inside
+each dimension's folder. Fabric reads them from `world/data`, and without them it stops with
+`Overworld settings missing`. `scripts/paper-to-fabric.sh` backs up `data/`, copies those files across,
+pins `MC_VERSION` to the version Paper was running, sets the variables above and starts the server. Copy the
+updated `docker-compose.yml` into the stack directory first, then run the script from there:
+
+```bash
+cd /opt/minecraft && bash /path/to/scripts/paper-to-fabric.sh
+```
+
+To go back, stop the server and restore the `backups/pre-fabric-*.tar.gz` it made.
+
+On Fabric:
+- **Players need the same mods.** Anyone joining needs Fabric and every mod that adds content. Server-only mods
+  (for example Lithium for performance) don't need installing client-side.
+- **The admin panel's tick rate stays blank.** It comes from Paper's `/tps` command. Everything else works.
+- **Paper's settings files** (`bukkit.yml`, `spigot.yml`, `config/paper-*.yml`) and `plugins/` are ignored.
 
 ## Running on Proxmox
 
