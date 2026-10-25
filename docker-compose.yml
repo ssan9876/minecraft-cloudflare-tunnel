@@ -5,7 +5,8 @@ services:
     restart: unless-stopped
     environment:
       EULA: "TRUE"
-      TYPE: PAPER
+      # PAPER (plugins) or FABRIC (mods; players need the same mods client-side)
+      TYPE: ${MC_TYPE:-PAPER}
       VERSION: ${MC_VERSION:-LATEST}
       MEMORY: ${MC_MEMORY:-4G}
       TZ: ${TZ:-UTC}
@@ -22,10 +23,16 @@ services:
       # Overlay ./config onto the server root on every start (the image defaults to /data/config)
       COPY_CONFIG_DEST: /data
       SYNC_SKIP_NEWER_IN_DESTINATION: "false"
+      # Fabric: Modrinth mods downloaded on start (e.g. fabric-api), plus our own jars from ./mods.
+      # REMOVE_OLD_MODS clears /data/mods first so replaced jars don't pile up.
+      MODRINTH_PROJECTS: ${MC_MODRINTH_PROJECTS:-}
+      REMOVE_OLD_MODS: ${MC_REMOVE_OLD_MODS:-FALSE}
     volumes:
       - ./data:/data
       # Files here are copied into /data on startup (see config/bukkit.yml)
       - ./config:/config:ro
+      # Our own mod jars; copied into /data/mods on startup
+      - ./mods:/mods:ro
     ports:
       # 127.0.0.1 = this machine only. Set MC_BIND=0.0.0.0 when a tunnel connector on another
       # machine (e.g. a separate cloudflared LXC) needs to reach the server over the LAN.

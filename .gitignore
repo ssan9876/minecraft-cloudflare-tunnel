@@ -1,8 +1,10 @@
 .env
 data/
 backups/
+mods/
 __pycache__/
 
 # Deployment-specific files
 player/server.conf
+player/mods.txt
 *.local.md
