@@ -9,6 +9,7 @@ CONF_HOST="mc.example.com"
 CONF_PORT="25565"
 SERVER_NAME="Minecraft Server"
 MODS=""
+SCRIPTS=""
 CONF_FILE="$SCRIPT_DIR/server.conf"
 if [ -f "$CONF_FILE" ]; then
   while IFS='=' read -r key value || [ -n "$key" ]; do
@@ -18,8 +19,29 @@ if [ -f "$CONF_FILE" ]; then
       LOCAL_PORT) CONF_PORT="$value" ;;
       SERVER_NAME) SERVER_NAME="$value" ;;
       MODS) MODS="$value" ;;
+      SCRIPTS) SCRIPTS="$value" ;;
     esac
   done < "$CONF_FILE"
+fi
+
+# The join scripts keep themselves up to date: with SCRIPTS in server.conf set to where the latest copies are
+# published, a newer join.sh there replaces this one and runs instead. Bump this whenever the script changes.
+JOIN_SCRIPT_VERSION=2
+if [ -n "$SCRIPTS" ] && [ -z "${JOIN_SCRIPT_UPDATED:-}" ]; then
+  latest="$(mktemp)"
+  if curl -fsSL --max-time 15 "${SCRIPTS%/}/join.sh" -o "$latest"; then
+    version="$(sed -n 's/^JOIN_SCRIPT_VERSION=\([0-9][0-9]*\)$/\1/p' "$latest" | head -n 1)"
+    if [ -n "$version" ] && [ "$version" -gt "$JOIN_SCRIPT_VERSION" ] && bash -n "$latest"; then
+      self="$SCRIPT_DIR/$(basename "$0")"
+      cat "$latest" > "$self"
+      rm -f "$latest"
+      echo "Updated the join script to version $version."
+      JOIN_SCRIPT_UPDATED=1 exec bash "$self" "$@"
+    fi
+  else
+    echo "Couldn't check for a newer join script, carrying on."
+  fi
+  rm -f "$latest"
 fi
 
 MC_HOST="${1:-$CONF_HOST}"

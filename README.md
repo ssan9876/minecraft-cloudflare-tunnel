@@ -83,7 +83,9 @@ The first start downloads Paper and generates the world, which takes a few minut
 1. Copy `player/server.conf.example` to `player/server.conf`.
 2. Set `HOSTNAME` to your tunnel hostname and `SERVER_NAME` to what players should see.
 3. On a Fabric server, set `MODS` too (see [Mods (Fabric)](#mods-fabric)).
-4. Zip the `player/` folder and send it to your players.
+4. Optionally set `SCRIPTS` to where the latest join scripts are published (see
+   [Keeping the scripts up to date](#keeping-the-scripts-up-to-date)).
+5. Zip the `player/` folder and send it to your players.
 
 **Windows:** players double-click `join.bat`. It:
 1. on a Fabric server, installs Fabric and the server's mods (see [Mods for players](#mods-for-players)),
@@ -97,6 +99,15 @@ Players then click **Play → Multiplayer → your server**. The official launch
 
 **macOS / Linux:** players run `./join.sh` and keep it running while they play, then add the server
 `localhost:25565` in Minecraft. On macOS it also opens the launcher.
+
+#### Keeping the scripts up to date
+
+With `SCRIPTS` set in `server.conf` to a folder link holding the latest `join.ps1` and `join.sh` (for this repo,
+`https://raw.githubusercontent.com/ssan9876/minecraft-cloudflare-tunnel/main/player`), the scripts check it each
+time they run. If the copy there has a higher version number (`$JoinScriptVersion` in `join.ps1`,
+`JOIN_SCRIPT_VERSION` in `join.sh`) and parses, it replaces the player's copy and runs instead. So once players
+have a zip with `SCRIPTS` set, they never need a new one: bump the version when changing a script and push it.
+If the check fails (offline, GitHub down), the script carries on with the copy it has.
 
 If port 25565 is already taken on a player's PC (for example, they host their own server), they set `LOCAL_PORT`
 in `server.conf`, or run `join.bat <hostname> 25570`.

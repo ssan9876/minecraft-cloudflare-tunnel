@@ -10,3 +10,8 @@ LOCAL_PORT=25565
 # without sending out new scripts) or a list file next to this script. See mods.txt.example.
 # The join script installs Fabric and these mods into a separate launcher installation named SERVER_NAME.
 MODS=
+# Where the latest join scripts are published: a link to a folder holding join.ps1 and join.sh, such as this
+# repo's player folder. The scripts then update themselves from there each time they run, so changes to them
+# reach players without sending out new copies. For this repo:
+#   SCRIPTS=https://raw.githubusercontent.com/ssan9876/minecraft-cloudflare-tunnel/main/player
+SCRIPTS=

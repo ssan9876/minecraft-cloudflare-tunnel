@@ -12,13 +12,34 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"  # Windows PowerShell's progress bar makes downloads very slow
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$config = @{ HOSTNAME = "mc.example.com"; SERVER_NAME = "Minecraft Server"; LOCAL_PORT = "25565"; MODS = "" }
+$config = @{ HOSTNAME = "mc.example.com"; SERVER_NAME = "Minecraft Server"; LOCAL_PORT = "25565"; MODS = ""; SCRIPTS = "" }
 $configFile = Join-Path $PSScriptRoot "server.conf"
 if (Test-Path $configFile) {
     foreach ($line in Get-Content $configFile) {
         if ($line -match '^\s*([A-Z_]+)\s*=\s*(.*?)\s*$') { $config[$Matches[1]] = $Matches[2].Trim('"') }
     }
 }
+# The join scripts keep themselves up to date: with SCRIPTS in server.conf set to where the latest copies are
+# published, a newer join.ps1 there replaces this one and runs instead. Bump this whenever the script changes.
+$JoinScriptVersion = 2
+if ($config.SCRIPTS -and -not $env:JOIN_SCRIPT_UPDATED) {
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri ($config.SCRIPTS.TrimEnd('/') + "/join.ps1")
+        $latest = if ($response.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($response.Content) } else { [string]$response.Content }
+        if ($latest -match '(?m)^\$JoinScriptVersion = (\d+)' -and [int]$Matches[1] -gt $JoinScriptVersion) {
+            $newVersion = $Matches[1]
+            $null = [ScriptBlock]::Create($latest)  # only take it if it parses
+            [IO.File]::WriteAllText($PSCommandPath, $latest, (New-Object Text.UTF8Encoding $true))
+            Write-Host "Updated the join script to version $newVersion."
+            $env:JOIN_SCRIPT_UPDATED = "1"
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @PSBoundParameters
+            exit $LASTEXITCODE
+        }
+    } catch {
+        Write-Host "Couldn't check for a newer join script, carrying on: $($_.Exception.Message)"
+    }
+}
+
 if (-not $Hostname) { $Hostname = $config.HOSTNAME }
 if (-not $ServerName) { $ServerName = $config.SERVER_NAME }
 if (-not $LocalPort) { $LocalPort = [int]$config.LOCAL_PORT }
