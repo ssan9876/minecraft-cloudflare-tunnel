@@ -1,5 +1,6 @@
 # Connects to the Minecraft server through Cloudflare, adds it to the Multiplayer list,
-# opens the Minecraft Launcher, and disconnects when the game closes.
+# opens the Minecraft Launcher, and disconnects when the game closes. For a Fabric server it
+# also installs Fabric and the server's mods (MODS in server.conf).
 # Settings come from server.conf next to this script (copy server.conf.example); parameters override it.
 param(
     [string]$Hostname,
@@ -8,8 +9,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"  # Windows PowerShell's progress bar makes downloads very slow
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$config = @{ HOSTNAME = "mc.example.com"; SERVER_NAME = "Minecraft Server"; LOCAL_PORT = "25565" }
+$config = @{ HOSTNAME = "mc.example.com"; SERVER_NAME = "Minecraft Server"; LOCAL_PORT = "25565"; MODS = "" }
 $configFile = Join-Path $PSScriptRoot "server.conf"
 if (Test-Path $configFile) {
     foreach ($line in Get-Content $configFile) {
@@ -25,6 +28,7 @@ if ($Hostname -eq "mc.example.com") {
 }
 
 $Address = "localhost:$LocalPort"
+$McDir = Join-Path $env:APPDATA ".minecraft"
 
 function Write-NbtString([IO.BinaryWriter]$w, [string]$s) {
     $bytes = [Text.Encoding]::UTF8.GetBytes($s)
@@ -39,10 +43,9 @@ function Write-NbtInt([IO.BinaryWriter]$w, [int]$n) {
     $w.Write($b)
 }
 
-# Adds the server to the top of .minecraft\servers.dat (uncompressed NBT:
+# Adds the server to the top of servers.dat in the game folder (uncompressed NBT:
 # root compound > "servers" list of compounds with "name" and "ip").
-function Add-ServerToList {
-    $dir = Join-Path $env:APPDATA ".minecraft"
+function Add-ServerToList([string]$dir) {
     if (-not (Test-Path $dir)) { return "no-minecraft-dir" }
     $file = Join-Path $dir "servers.dat"
 
@@ -78,6 +81,106 @@ function Add-ServerToList {
     return "added"
 }
 
+# Reads the mods list (see mods.txt.example): the Minecraft and Fabric Loader versions, and the mods.
+# Mods are https:// links, or for a list next to this script, also paths relative to it.
+function Read-ModList([string]$source) {
+    $base = $null
+    if ($source -match '^https://') {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $source
+        $text = [Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray())
+    } else {
+        $path = if ([IO.Path]::IsPathRooted($source)) { $source } else { Join-Path $PSScriptRoot $source }
+        $text = [IO.File]::ReadAllText($path)
+        $base = Split-Path $path -Parent
+    }
+
+    $list = @{ Minecraft = $null; Loader = $null; Mods = @() }
+    foreach ($line in $text -split "`r?`n") {
+        $line = $line.Trim()
+        if (-not $line -or $line.StartsWith("#")) { continue }
+        $key, $value = $line -split '\s+', 2
+        switch ($key) {
+            "minecraft"     { $list.Minecraft = $value }
+            "fabric-loader" { $list.Loader = $value }
+            "mod" {
+                if ($value -match '^https://') { $list.Mods += $value }
+                elseif ($base) { $list.Mods += (Join-Path $base $value) }
+                else { throw "mod '$value' in $source must be an https:// link" }
+            }
+        }
+    }
+    if (-not $list.Minecraft -or -not $list.Loader) { throw "$source needs 'minecraft' and 'fabric-loader' lines" }
+    return $list
+}
+
+# Installs Fabric and the server's mods into their own game folder, with a launcher installation named after
+# the server, so the player's own mods and other versions are left alone. Returns the game folder.
+function Install-ServerMods($list) {
+    if (-not (Test-Path $McDir)) { throw "open the Minecraft Launcher once first, then run join again" }
+
+    # Fabric's launcher version, as the Fabric installer would set it up
+    $versionId = "fabric-loader-$($list.Loader)-$($list.Minecraft)"
+    $versionDir = Join-Path $McDir "versions\$versionId"
+    $versionJson = Join-Path $versionDir "$versionId.json"
+    if (-not (Test-Path $versionJson)) {
+        Write-Host "Installing Fabric $($list.Loader) for Minecraft $($list.Minecraft)..."
+        New-Item -ItemType Directory -Force $versionDir | Out-Null
+        Invoke-WebRequest -UseBasicParsing -OutFile "$versionJson.part" `
+            -Uri "https://meta.fabricmc.net/v2/versions/loader/$($list.Minecraft)/$($list.Loader)/profile/json"
+        Move-Item -Force "$versionJson.part" $versionJson
+    }
+
+    $slug = ($ServerName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+    if (-not $slug) { $slug = "server" }
+    $gameDir = Join-Path $McDir "profiles\$slug"
+    $modsDir = Join-Path $gameDir "mods"
+    New-Item -ItemType Directory -Force $modsDir | Out-Null
+
+    # Jars from an earlier list that aren't on this one are removed. Ones the player added are left alone.
+    $managedFile = Join-Path $modsDir ".server-mods.txt"
+    $previous = if (Test-Path $managedFile) { @(Get-Content $managedFile) } else { @() }
+    $wanted = @()
+    foreach ($mod in $list.Mods) {
+        $name = if ($mod -match '^https://') { [Uri]::UnescapeDataString(([Uri]$mod).Segments[-1]) } else { Split-Path $mod -Leaf }
+        if ($name -notmatch '^[^\\/]+\.jar$') { throw "not a .jar: $mod" }
+        $wanted += $name
+        $target = Join-Path $modsDir $name
+        if (Test-Path $target) { continue }
+        Write-Host "Downloading $name..."
+        if ($mod -match '^https://') { Invoke-WebRequest -UseBasicParsing -Uri $mod -OutFile "$target.part" }
+        else { Copy-Item $mod "$target.part" }
+        Move-Item -Force "$target.part" $target
+    }
+    foreach ($name in $previous) {
+        if ($wanted -notcontains $name -and $name -match '^[^\\/]+\.jar$') {
+            Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $modsDir $name)
+        }
+    }
+    Set-Content -Path $managedFile -Value $wanted -Encoding ASCII
+
+    # Start from the player's usual settings (controls, video) the first time
+    $options = Join-Path $gameDir "options.txt"
+    if (-not (Test-Path $options) -and (Test-Path "$McDir\options.txt")) { Copy-Item "$McDir\options.txt" $options }
+
+    # The launcher installation, marked as just used so the launcher selects it
+    $files = @("launcher_profiles.json", "launcher_profiles_microsoft_store.json") |
+        ForEach-Object { Join-Path $McDir $_ } | Where-Object { Test-Path $_ }
+    if (-not $files) { $files = @(Join-Path $McDir "launcher_profiles.json") }
+    $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+    foreach ($file in $files) {
+        $json = if (Test-Path $file) { [IO.File]::ReadAllText($file) | ConvertFrom-Json } else { [pscustomobject]@{} }
+        if (-not $json.profiles) { $json | Add-Member -Force profiles ([pscustomobject]@{}) }
+        $installation = $json.profiles.$slug
+        if (-not $installation) { $installation = [pscustomobject]@{ created = $now } }
+        $values = @{ name = $ServerName; type = "custom"; icon = "Grass"; lastVersionId = $versionId; gameDir = $gameDir; lastUsed = $now }
+        foreach ($key in $values.Keys) { $installation | Add-Member -Force $key $values[$key] }
+        $json.profiles | Add-Member -Force $slug $installation
+        [IO.File]::WriteAllText($file, ($json | ConvertTo-Json -Depth 32), (New-Object Text.UTF8Encoding $false))
+    }
+
+    return $gameDir
+}
+
 function Start-MinecraftLauncher {
     $pkg = Get-AppxPackage -Name Microsoft.4297127D64EC6 -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($pkg) {
@@ -97,7 +200,20 @@ function Get-GameProcess {
         Where-Object { $_.CommandLine -match 'minecraft' }
 }
 
-# 1. Make sure cloudflared is installed
+# 1. On a Fabric server, install Fabric and the server's mods
+$gameDir = $McDir
+if ($config.MODS) {
+    Write-Host "Checking the server's mods..."
+    try {
+        $gameDir = Install-ServerMods (Read-ModList $config.MODS)
+    } catch {
+        Write-Host "Couldn't install the server's mods: $($_.Exception.Message)"
+        exit 1
+    }
+    Write-Host "Mods are up to date."
+}
+
+# 2. Make sure cloudflared is installed
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     Write-Host "Installing cloudflared (one time only)..."
     winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements
@@ -108,7 +224,7 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     }
 }
 
-# 2. Start the tunnel in the background (replacing one left over from a previous run)
+# 3. Start the tunnel in the background (replacing one left over from a previous run)
 Get-CimInstance Win32_Process -Filter "Name = 'cloudflared.exe'" |
     Where-Object { $_.CommandLine -match 'access tcp' -and $_.CommandLine -match [regex]::Escape($Hostname) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -125,14 +241,14 @@ if ($tunnel.HasExited) {
 Write-Host "Connected to $Hostname."
 
 try {
-    # 3. Put the server in the Multiplayer list
-    switch (Add-ServerToList) {
+    # 4. Put the server in the Multiplayer list
+    switch (Add-ServerToList $gameDir) {
         "added"         { Write-Host "Added '$ServerName' to your Multiplayer list." }
         "already-added" { }
         default         { Write-Host "Couldn't add the server automatically. In Multiplayer, click Add Server and enter: $Address" }
     }
 
-    # 4. Open the launcher (unless the game is already running)
+    # 5. Open the launcher (unless the game is already running)
     if (-not (Get-GameProcess)) {
         if (Start-MinecraftLauncher) {
             Write-Host "Opening the Minecraft Launcher..."
@@ -142,11 +258,15 @@ try {
     }
 
     Write-Host ""
+    if ($config.MODS) {
+        Write-Host "In the launcher, pick the '$ServerName' installation next to PLAY (it's selected for you)."
+        Write-Host "If the launcher was already open, close and reopen it so it shows up."
+    }
     Write-Host "Click PLAY, then Multiplayer > '$ServerName'."
     Write-Host "You can minimize this window. It disconnects automatically when Minecraft closes."
     Write-Host ""
 
-    # 5. Wait for the game to start (up to 30 min), then for it to close
+    # 6. Wait for the game to start (up to 30 min), then for it to close
     $deadline = (Get-Date).AddMinutes(30)
     while (-not (Get-GameProcess)) {
         if ((Get-Date) -gt $deadline) { Write-Host "Minecraft didn't start. Disconnecting."; exit 0 }

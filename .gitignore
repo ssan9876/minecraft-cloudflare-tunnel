@@ -6,4 +6,5 @@ __pycache__/
 
 # Deployment-specific files
 player/server.conf
+player/mods.txt
 *.local.md

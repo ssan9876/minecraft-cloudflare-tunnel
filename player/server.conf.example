@@ -6,3 +6,7 @@ HOSTNAME=mc.example.com
 SERVER_NAME=Minecraft Server
 # Local port the join script listens on (change if 25565 is taken on the player's PC)
 LOCAL_PORT=25565
+# Fabric servers only: the mods players need, as an https:// link to a list (so you can update mods
+# without sending out new scripts) or a list file next to this script. See mods.txt.example.
+# The join script installs Fabric and these mods into a separate launcher installation named SERVER_NAME.
+MODS=

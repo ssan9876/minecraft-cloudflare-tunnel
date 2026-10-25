@@ -82,14 +82,16 @@ The first start downloads Paper and generates the world, which takes a few minut
 
 1. Copy `player/server.conf.example` to `player/server.conf`.
 2. Set `HOSTNAME` to your tunnel hostname and `SERVER_NAME` to what players should see.
-3. Zip the `player/` folder and send it to your players.
+3. On a Fabric server, set `MODS` too (see [Mods (Fabric)](#mods-fabric)).
+4. Zip the `player/` folder and send it to your players.
 
 **Windows:** players double-click `join.bat`. It:
-1. installs `cloudflared` through winget (first run only),
-2. starts the tunnel in the background,
-3. adds your server to the top of their Multiplayer list (keeping a backup at `servers.dat.bak`),
-4. opens the Minecraft Launcher,
-5. disconnects when Minecraft closes.
+1. on a Fabric server, installs Fabric and the server's mods (see [Mods for players](#mods-for-players)),
+2. installs `cloudflared` through winget (first run only),
+3. starts the tunnel in the background,
+4. adds your server to the top of their Multiplayer list (keeping a backup at `servers.dat.bak`),
+5. opens the Minecraft Launcher,
+6. disconnects when Minecraft closes.
 
 Players then click **Play → Multiplayer → your server**. The official launcher can't join a server automatically.
 
@@ -154,10 +156,36 @@ cd /opt/minecraft && bash /path/to/scripts/paper-to-fabric.sh
 To go back, stop the server and restore the `backups/pre-fabric-*.tar.gz` it made.
 
 On Fabric:
-- **Players need the same mods.** Anyone joining needs Fabric and every mod that adds content. Server-only mods
-  (for example Lithium for performance) don't need installing client-side.
+- **Players need the same mods.** The server turns away anyone without Fabric and every mod that adds content.
+  Server-only mods (for example Lithium for performance) don't need installing client-side.
 - **The admin panel's tick rate stays blank.** It comes from Paper's `/tps` command. Everything else works.
 - **Paper's settings files** (`bukkit.yml`, `spigot.yml`, `config/paper-*.yml`) and `plugins/` are ignored.
+
+### Mods for players
+
+The join scripts install Fabric and the server's mods for each player. List them in a mods file
+(see `player/mods.txt.example`): the Minecraft and Fabric Loader versions, then a download link for each mod.
+
+```
+minecraft 26.3
+fabric-loader 0.20.1
+mod https://cdn.modrinth.com/data/P7dR8mSH/versions/EQKgpeKu/fabric-api-0.165.0%2B26.3.jar
+mod https://github.com/you/your-mod/releases/download/v1.0.0/your-mod-1.0.0.jar
+```
+
+Then set `MODS` in `player/server.conf`, either to the file (`MODS=mods.txt`, sent along in the zip, where
+`mod` lines may also name jars next to it) or to an https:// link to it. With a link, players pick up mod
+updates the next time they run the join script, without new files from you.
+
+Each time it runs, the join script:
+1. installs Fabric for the listed version,
+2. downloads any listed mods it doesn't have yet, and removes ones it installed before that are no longer listed
+   (jars the player added themselves stay),
+3. creates an installation in the launcher named after `SERVER_NAME`, selected and ready to play.
+
+The installation has its own game folder (`.minecraft/profiles/<server name>`), so the player's other mods and
+versions are untouched. The first time, it copies their settings across. Pin the server's mods to the same
+versions as the list, for example `MC_MODRINTH_PROJECTS=fabric-api:EQKgpeKu` (a Modrinth version ID).
 
 ## Running on Proxmox
 
